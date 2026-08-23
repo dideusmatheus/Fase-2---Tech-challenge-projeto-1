@@ -27,7 +27,45 @@ Testar todas as combinações de hiperparâmetros (grid search) cresce exponenci
 
 ### Arquitetura do módulo `src/genetic_algorithm/`
 
-![Arquitetura da Etapa 1](docs/diagrams/etapa1_arquitetura.png)
+```mermaid
+flowchart LR
+    START([Inicio])
+
+    subgraph BUILD ["Blocos de construcao"]
+        direction TB
+        SEARCH["hyperparameter_space.py<br/>espaco de busca (genes) + fabrica de modelos sklearn"]
+        INDIV["individual.py<br/>cria e decodifica individuos (genes)"]
+        OPS["operators.py<br/>selecao, cruzamento, mutacao"]
+        FIT["fitness.py<br/>treina e avalia: recall, F1, accuracy"]
+        DATA["data_loader.py<br/>carrega splits ja processados no Modulo 1"]
+        SEARCH --> INDIV
+    end
+
+    subgraph ENGINE ["Motor do Algoritmo Genetico"]
+        GA["ga_engine.py<br/>loop de geracoes (elitismo + evolucao)"]
+    end
+
+    subgraph USES ["Usos do motor"]
+        direction TB
+        EXP["experiments.py<br/>3 configs do Algoritmo Genetico x 1 modelo"]
+        OPT["optimize_models.py<br/>1 config do Algoritmo Genetico x 8 modelos"]
+    end
+
+    PIPELINE(["ga_pipeline.py<br/>roda tudo com 1 comando"])
+    END([Fim])
+
+    START --> SEARCH
+    INDIV --> GA
+    OPS --> GA
+    FIT --> GA
+    DATA --> EXP
+    DATA --> OPT
+    GA --> EXP
+    GA --> OPT
+    EXP --> PIPELINE
+    OPT --> PIPELINE
+    PIPELINE --> END
+```
 
 ### O que cada arquivo faz
 
@@ -138,10 +176,151 @@ Dados completos em [reports/ga_optimization/comparison_baseline_vs_ga.csv](repor
 - **Depreciação do `penalty` na Logistic Regression**: a versão do scikit-learn usada no projeto (1.8) emitia `FutureWarning` ao variar `penalty` junto com `solver="liblinear"`. Solução: remover `penalty` do espaço de busca e manter apenas `C`, evitando o warning sem perder um hiperparâmetro relevante.
 - **Escolha do modelo de referência nos experimentos**: inicialmente os 3 experimentos rodavam em `random_forest`, mas como esse modelo satura no teto de desempenho já na 1ª geração, os 3 gráficos ficavam idênticos (retos) — sem valor demonstrativo. Trocado para `decision_tree`, que tem espaço real de melhoria e mostra o efeito da configuração do Algoritmo Genético.
 
-### Próximos passos
+### Escopo
 
-- **Etapa 2**: configurar escalabilidade automática, monitoramento e logging de desempenho, e documentar a arquitetura e decisões de implementação.
-- **Etapa 3**: integrar uma LLM pré-treinada para gerar explicações em linguagem natural dos diagnósticos e interpretar os resultados dos modelos para profissionais de saúde.
+- **Etapa 2** (escalabilidade automática, monitoramento e logging): **não incluída no escopo deste projeto**, por decisão do autor.
+
+---
+
+## Etapa 3 — Integração com LLMs para Interpretação de Resultados
+
+### Objetivo
+
+Usar uma LLM pré-treinada para transformar a saída "crua" dos modelos (0/1, probabilidade, tabela de métricas) em texto compreensível para diferentes públicos:
+1. Explicar em linguagem natural por que o modelo chegou numa predição de diagnóstico para um paciente específico — em **duas versões**: técnica (para o médico) e em linguagem simples (para o paciente);
+2. Traduzir as métricas comparativas da Etapa 1 em um resumo executivo com recomendações práticas (para gestores hospitalares).
+
+### Qual LLM foi escolhida e por quê
+
+Usamos a **API da Anthropic (Claude)**, com o modelo **Claude Haiku 4.5** — o mais barato e rápido da linha, e mais que suficiente para essa tarefa (gerar textos curtos de explicação, sem exigir raciocínio complexo). Escolhido em vez de rodar um modelo local (LLaMA/Falcon) porque não exige GPU nem infraestrutura própria — só uma chave de API.
+
+### ⚠️ O que precisa ser configurado antes de rodar
+
+Diferente dos módulos anteriores, esta etapa depende de um serviço externo pago (a API da Anthropic). Antes de rodar:
+
+1. Crie uma conta e gere uma chave de API em [console.anthropic.com/settings/keys](https://console.anthropic.com/settings/keys)
+2. Copie o arquivo [.env.example](.env.example) para um novo arquivo `.env` na raiz do projeto
+3. Cole sua chave no `.env`:
+   ```
+   ANTHROPIC_API_KEY=sk-ant-...
+   ```
+4. O `.env` já está no `.gitignore` — sua chave nunca é enviada ao GitHub.
+
+Sem isso, `client.py` lança um erro explicando exatamente o que falta, em vez do pipeline quebrar de forma confusa.
+
+### Arquitetura do módulo `src/llm_interpretation/`
+
+```mermaid
+flowchart LR
+    START([Inicio])
+
+    SVM[("svm.pkl<br/>Modulo 1")]
+    CSV[("comparison_baseline_vs_ga.csv<br/>Etapa 1")]
+
+    subgraph BASE ["Base de comunicacao"]
+        direction TB
+        CLIENT["client.py<br/>autentica e chama a API da Anthropic"]
+        PROMPTS["prompts.py<br/>system prompts + prompt builders"]
+    end
+
+    subgraph INTERP ["Interpretacoes"]
+        direction TB
+        DIAG["diagnosis_explainer.py<br/>explica a predicao de 1 paciente (medico + leigo)"]
+        METRICS["metrics_narrator.py<br/>traduz a tabela de metricas da Etapa 1 em insights"]
+    end
+
+    subgraph ORCH ["Orquestracao e Qualidade"]
+        direction TB
+        QUALITY["evaluate_quality.py<br/>checklist de qualidade (regras, sem custo de API)"]
+        PIPELINE["llm_pipeline.py<br/>roda tudo com 1 comando"]
+        QUALITY --> PIPELINE
+    end
+
+    OUTPUT[("reports/llm_interpretation/<br/>explicacoes + insights + avaliacao")]
+    END([Fim])
+
+    START --> CLIENT
+    CLIENT --> DIAG
+    CLIENT --> METRICS
+    PROMPTS --> DIAG
+    PROMPTS --> METRICS
+    SVM --> DIAG
+    CSV --> METRICS
+    DIAG --> PIPELINE
+    METRICS --> PIPELINE
+    PIPELINE --> OUTPUT
+    OUTPUT --> END
+```
+
+Os nós em formato de cilindro (`svm.pkl`, `comparison_baseline_vs_ga.csv`, `reports/llm_interpretation/`) são artefatos, não código: os dois primeiros são gerados em outras etapas do projeto (Módulo 1 e Etapa 1) e só consumidos aqui; o terceiro é a saída final gerada por esta etapa.
+
+### O que cada arquivo faz
+
+| Arquivo | Responsabilidade |
+|---|---|
+| [client.py](src/llm_interpretation/client.py) | Lê a `ANTHROPIC_API_KEY` do `.env`, cria o cliente da API e expõe `ask_claude(...)` — a função usada por todo o resto do módulo para enviar uma pergunta e receber o texto de resposta |
+| [prompts.py](src/llm_interpretation/prompts.py) | Concentra os *system prompts* (regras/contexto médico) e os *prompt builders* (montam a pergunta específica com os dados de cada paciente ou da tabela de métricas) |
+| [diagnosis_explainer.py](src/llm_interpretation/diagnosis_explainer.py) | Carrega um paciente do conjunto de teste, roda a predição do modelo (SVM), identifica as medidas mais fora do padrão, e pede pro Claude explicar o resultado em linguagem natural — em versão técnica (médico) e leiga (paciente) |
+| [metrics_narrator.py](src/llm_interpretation/metrics_narrator.py) | Lê o CSV de comparação da Etapa 1 e pede pro Claude transformar os números em um resumo executivo com recomendações |
+| [evaluate_quality.py](src/llm_interpretation/evaluate_quality.py) | Avalia a qualidade dos textos gerados com uma checklist de regras determinística (sem gastar chamadas de API extra) |
+| [llm_pipeline.py](src/pipeline/llm_pipeline.py) | Orquestra tudo: gera explicações de até 2 pacientes de cada categoria de acerto/erro, gera o resumo de métricas, avalia a qualidade, e salva os resultados |
+
+### Técnicas de prompt engineering usadas
+
+- **Role prompting**: o *system prompt* define um papel específico ("assistente de apoio a médicos"), o que ajusta tom e vocabulário da resposta.
+- **Restrição de escopo**: instruções explícitas sobre o que o modelo NÃO deve fazer (dar diagnóstico definitivo, substituir o médico) — reduz respostas fora do contexto clínico esperado.
+- **Formato de saída guiado**: pedimos explicitamente um formato curto e estruturado (1 parágrafo para diagnóstico; resumo + bullets para métricas), em vez de deixar o modelo livre para divagar.
+
+Prompts completos em [prompts.py](src/llm_interpretation/prompts.py).
+
+### Duas versões da explicação de diagnóstico
+
+Cada paciente da amostra recebe **2 explicações geradas separadamente**, com prompts e públicos diferentes:
+
+- **Técnica** (`SYSTEM_PROMPT_DIAGNOSIS` + `build_diagnosis_prompt`): para o médico, cita as medidas do exame e seus valores em desvios-padrão.
+- **Leiga** (`SYSTEM_PROMPT_DIAGNOSIS_LEIGA` + `build_diagnosis_prompt_leiga`): para o paciente, mesma predição e mesmos dados de entrada, mas o prompt proíbe explicitamente citar termos técnicos — o Claude precisa "traduzir" o resultado pra linguagem do dia a dia.
+
+O resumo de métricas (`metrics_narrator.py`) **não** ganhou uma versão leiga: ele já é uma decisão de gestão hospitalar (qual modelo adotar), sem um público leigo/paciente natural pra esse conteúdo.
+
+Essa separação entre "dado técnico" e "prompt que define o público" é também o exemplo mais direto de como a Etapa 3 já está pronta pra novos tipos de interpretação (veja "Base para o Módulo 3" abaixo): adicionar um público novo é só um novo prompt builder.
+
+### Organização da amostra por categoria de acerto/erro
+
+Em vez de pegar pacientes aleatórios, `explain_sample_patients()` busca até **2 pacientes de cada uma das 4 categorias possíveis** de uma predição binária — os mesmos 4 nomes já usados na "Tabela de Acertos e Erros por Diagnóstico" do Módulo 1 ([validation.py](src/machine_learning/validation.py)):
+
+1. **Câncer Perdido** (Falso Negativo — real Maligno, previsto Benigno)
+2. **Acerto Maligno** (Verdadeiro Positivo — real Maligno, previsto Maligno)
+3. **Alarme Falso** (Falso Positivo — real Benigno, previsto Maligno)
+4. **Acerto Benigno** (Verdadeiro Negativo — real Benigno, previsto Benigno)
+
+As duas categorias de **real Maligno** vêm primeiro — é aí que está a importância clínica do projeto, já que o objetivo do modelo é encontrar casos malignos. Se alguma categoria tiver menos de 2 pacientes no conjunto de teste (ex: poucos alarmes falsos), a amostra usa só os que existem, sem quebrar.
+
+### Avaliação da qualidade das interpretações
+
+Em vez de gastar chamadas de API extra pedindo pro próprio Claude se autoavaliar, usamos uma checklist determinística (`evaluate_quality.py`) com 4 critérios: menciona o diagnóstico, reforça que a decisão final é do médico, não usa linguagem de certeza absoluta, e tem tamanho adequado. O score é a % de critérios atendidos por texto.
+
+### Custo estimado por execução
+
+O pipeline faz **até 17 chamadas** à API por execução (até 8 pacientes × 2 versões de explicação + 1 narrativa de métricas — pode ser menos se alguma categoria tiver poucos exemplos no teste), usando Claude Haiku 4.5. Custo aproximado: **menos de US$ 0,03 por execução completa** — dá pra rodar centenas de vezes com poucos dólares de crédito.
+
+### Como executar
+
+```powershell
+python -m src.pipeline.llm_pipeline
+```
+
+**Saídas geradas:**
+
+```
+reports/llm_interpretation/
+├── diagnosis_explanations.md   # explicações de diagnóstico, agrupadas pelas 4 categorias de acerto/erro
+├── metrics_insights.md         # resumo executivo das métricas da Etapa 1
+└── quality_evaluation.json     # avaliação de qualidade de cada texto gerado
+```
+
+### Base para o Módulo 3
+
+O desafio pede que essa etapa "prepare a base para a futura integração com dados textuais no Módulo 3". A separação entre `client.py` (comunicação com a API), `prompts.py` (textos) e os módulos de aplicação (`diagnosis_explainer.py`, `metrics_narrator.py`) já deixa isso pronto: um novo tipo de interpretação (ex: analisar anotações clínicas em texto livre) só precisaria de um novo prompt builder e um novo arquivo de aplicação, sem tocar em `client.py`.
 
 ---
 
@@ -163,7 +342,8 @@ Dados completos em [reports/ga_optimization/comparison_baseline_vs_ga.csv](repor
 ├── notebooks/
 │   └── eda.ipynb                      # análise exploratória (Fase 1)
 ├── reports/
-│   └── ga_optimization/               # resultados da Etapa 1 (CSVs, JSON, gráfico)
+│   ├── ga_optimization/               # resultados da Etapa 1 (CSVs, JSON, gráfico)
+│   └── llm_interpretation/            # resultados da Etapa 3 (explicações, insights, avaliação)
 ├── src/
 │   ├── machine_learning/              # pipeline de ML da Fase 1 (não alterado)
 │   ├── genetic_algorithm/             # módulo novo da Etapa 1
@@ -175,9 +355,17 @@ Dados completos em [reports/ga_optimization/comparison_baseline_vs_ga.csv](repor
 │   │   ├── ga_engine.py
 │   │   ├── experiments.py
 │   │   └── optimize_models.py
+│   ├── llm_interpretation/            # módulo novo da Etapa 3
+│   │   ├── client.py
+│   │   ├── prompts.py
+│   │   ├── diagnosis_explainer.py
+│   │   ├── metrics_narrator.py
+│   │   └── evaluate_quality.py
 │   └── pipeline/
 │       ├── training_pipeline.py       # orquestrador da Fase 1
-│       └── ga_pipeline.py             # orquestrador da Etapa 1
+│       ├── ga_pipeline.py             # orquestrador da Etapa 1
+│       └── llm_pipeline.py            # orquestrador da Etapa 3
+├── .env.example                       # modelo do arquivo de variáveis de ambiente (API key)
 └── requirements.txt
 ```
 
@@ -188,6 +376,8 @@ Dados completos em [reports/ga_optimization/comparison_baseline_vs_ga.csv](repor
 - pandas / NumPy (manipulação de dados)
 - Matplotlib (gráfico de convergência do Algoritmo Genético)
 - joblib (persistência de modelos)
+- anthropic (SDK oficial da API da Anthropic / Claude)
+- python-dotenv (carrega a API key do arquivo `.env`)
 
 ## Como executar o projeto completo
 
@@ -204,4 +394,11 @@ python -m src.pipeline.training_pipeline
 
 # 4. Pipeline da Etapa 1 (otimização via Algoritmo Genético)
 python -m src.pipeline.ga_pipeline
+
+# 5. Configure sua API key da Anthropic (veja a seção "Etapa 3" acima)
+copy .env.example .env
+# edite o .env e cole sua chave
+
+# 6. Pipeline da Etapa 3 (interpretação via LLM)
+python -m src.pipeline.llm_pipeline
 ```
