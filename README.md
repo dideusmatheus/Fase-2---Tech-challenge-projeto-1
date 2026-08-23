@@ -25,6 +25,48 @@ Usar um **Algoritmo Genético** para buscar hiperparâmetros melhores para cada 
 
 Testar todas as combinações de hiperparâmetros (grid search) cresce exponencialmente com o número de parâmetros. Um Algoritmo Genético evolui uma população de configurações candidatas ao longo de gerações — mantendo as melhores (elitismo) e gerando novas combinações via cruzamento e mutação — encontrando boas soluções sem precisar testar o espaço inteiro.
 
+### Diagrama de Fluxo
+
+```mermaid
+flowchart LR
+    START([Inicio])
+
+    DATA[("data/processed/<br/>splits do Modulo 1")]
+
+    subgraph EXPERIMENTS ["Experimentos (3 configs, 1 modelo)"]
+        direction TB
+        E_NEXT["Iterar sobre os 3 experimentos<br/>Exp1, Exp2, Exp3"]
+        E_RUN["Roda Algoritmo Genetico completo<br/>(loop de geracoes: elitismo + evolucao)"]
+        E_SAVE["Registra melhor fitness<br/>e curva de convergencia"]
+        E_LOOP{"Proximo<br/>experimento?"}
+        E_NEXT --> E_RUN --> E_SAVE --> E_LOOP
+        E_LOOP -- Sim --> E_NEXT
+    end
+
+    E_OUT[("experiments_summary.csv<br/>experiments_convergence.png")]
+
+    subgraph OPTIMIZE ["Otimizacao (1 config, 8 modelos)"]
+        direction TB
+        O_NEXT["Iterar sobre os 8 modelos<br/>do Modulo 1"]
+        O_BASE["Avalia modelo original (.pkl)<br/>no conjunto de validacao"]
+        O_RUN["Roda Algoritmo Genetico completo<br/>para esse modelo"]
+        O_SAVE["Salva modelo otimizado<br/>e compara com o original"]
+        O_LOOP{"Proximo<br/>modelo?"}
+        O_NEXT --> O_BASE --> O_RUN --> O_SAVE --> O_LOOP
+        O_LOOP -- Sim --> O_NEXT
+    end
+
+    O_OUT[("comparison_baseline_vs_ga.csv<br/>best_hyperparameters.json<br/>models/ga_optimized/")]
+
+    END([Fim])
+
+    START --> DATA --> E_NEXT
+    E_LOOP -- Nao --> E_OUT --> O_NEXT
+    O_LOOP -- Nao --> O_OUT --> END
+```
+
+Os losangos representam decisões reais de execução (loop de experimentos e loop de modelos); os cilindros são arquivos lidos/gerados em disco, não código.
+
 ### Arquitetura do módulo `src/genetic_algorithm/`
 
 ```mermaid
@@ -207,6 +249,54 @@ Diferente dos módulos anteriores, esta etapa depende de um serviço externo pag
 4. O `.env` já está no `.gitignore` — sua chave nunca é enviada ao GitHub.
 
 Sem isso, `client.py` lança um erro explicando exatamente o que falta, em vez do pipeline quebrar de forma confusa.
+
+### Diagrama de Fluxo
+
+```mermaid
+flowchart LR
+    START([Inicio])
+
+    SVM_F[("svm.pkl<br/>Modulo 1")]
+    CSV_F[("comparison_baseline_vs_ga.csv<br/>Etapa 1")]
+
+    subgraph DIAG ["Explicacoes de diagnostico"]
+        direction TB
+        D_NEXT["Iterar sobre as 4 categorias<br/>(Cancer Perdido, Acerto Maligno, Alarme Falso, Acerto Benigno)"]
+        D_PATIENT["Iterar ate 2 pacientes da categoria"]
+        D_PREDICT["Roda predicao do SVM<br/>+ identifica medidas notaveis"]
+        D_ASK["Pede ao Claude 2 explicacoes<br/>tecnica (medico) e leiga (paciente)"]
+        D_LOOP_P{"Proximo<br/>paciente?"}
+        D_LOOP_C{"Proxima<br/>categoria?"}
+        D_NEXT --> D_PATIENT --> D_PREDICT --> D_ASK --> D_LOOP_P
+        D_LOOP_P -- Sim --> D_PATIENT
+        D_LOOP_P -- Nao --> D_LOOP_C
+        D_LOOP_C -- Sim --> D_NEXT
+    end
+
+    subgraph METRICS ["Resumo de metricas"]
+        direction TB
+        M_FORMAT["Formata tabela de comparacao<br/>em texto"]
+        M_ASK["Pede ao Claude um resumo executivo<br/>com recomendacoes"]
+        M_FORMAT --> M_ASK
+    end
+
+    subgraph QUALITY ["Avaliacao de qualidade"]
+        direction TB
+        Q_CHECK["Roda checklist de regras<br/>em cada texto gerado (sem API)"]
+    end
+
+    OUTPUT_F[("reports/llm_interpretation/<br/>explicacoes + insights + avaliacao")]
+    END([Fim])
+
+    START --> D_NEXT
+    SVM_F --> D_PREDICT
+    D_LOOP_C -- Nao --> M_FORMAT
+    CSV_F --> M_FORMAT
+    M_ASK --> Q_CHECK
+    Q_CHECK --> OUTPUT_F --> END
+```
+
+Os losangos representam decisões reais de execução (loop de pacientes e de categorias); os cilindros são arquivos lidos/gerados em disco, não código.
 
 ### Arquitetura do módulo `src/llm_interpretation/`
 
