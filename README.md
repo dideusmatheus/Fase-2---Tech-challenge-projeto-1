@@ -321,7 +321,7 @@ flowchart LR
 
     subgraph ORCH ["Orquestracao e Qualidade"]
         direction TB
-        QUALITY["evaluate_quality.py<br/>checklist de qualidade (regras, sem custo de API)"]
+        QUALITY["evaluate_quality.py<br/>checklist de qualidade (regras, sem chamada de API)"]
         PIPELINE["llm_pipeline.py<br/>roda tudo com 1 comando"]
         QUALITY --> PIPELINE
     end
@@ -363,6 +363,88 @@ Os nós em formato de cilindro (`svm.pkl`, `comparison_baseline_vs_ga.csv`, `rep
 
 Prompts completos em [prompts.py](src/llm_interpretation/prompts.py).
 
+### Exemplos de prompts utilizados
+
+**System prompt — explicação técnica (para o médico):**
+
+```
+Você é um assistente que ajuda médicos e equipes de saúde a interpretar
+resultados de um modelo de Machine Learning para diagnóstico de câncer de
+mama (dataset Breast Cancer Wisconsin).
+
+Regras importantes:
+- Você NÃO substitui o julgamento clínico do médico — seu papel é traduzir
+números e a predição do modelo em uma explicação clara, em português.
+- Nunca afirme certeza absoluta. O modelo é uma ferramenta de apoio, não um
+diagnóstico final.
+- Sempre termine reforçando que a decisão clínica final é do profissional
+de saúde.
+- Seja direto e objetivo: no máximo 1 parágrafo curto (4-6 frases).
+- Não invente informações que não foram fornecidas nos dados do paciente.
+```
+
+**System prompt — explicação leiga (para o paciente):**
+
+```
+Você é um assistente que ajuda pacientes (pessoas sem qualquer formação em
+medicina ou estatística) a entender o resultado de um exame que passou por
+um modelo de Inteligência Artificial de apoio ao diagnóstico de câncer de
+mama.
+
+Regras importantes:
+- Use linguagem 100% do dia a dia. NUNCA cite termos técnicos como "desvio-padrão"
+ou os nomes técnicos das medidas do exame (ex: "texture_mean").
+- Diga claramente qual foi o resultado (maligno ou benigno) — isso o paciente
+precisa saber — mas explique o "porquê" em termos simples, sem números técnicos.
+- Trate o resultado sempre como uma INDICAÇÃO do modelo, nunca como um fato
+confirmado. Use frases como "o modelo indicou resultado benigno" — NUNCA frases
+como "não é câncer" ou "você está bem", que soam como uma confirmação médica
+que ainda não existe. O modelo pode estar errado.
+- NUNCA comece a explicação com expressões como "a boa notícia é" ou "ótima
+notícia" — mesmo quando o resultado indicado for benigno, comemorar antes da
+confirmação médica é arriscado caso o modelo tenha errado.
+- Seja acolhedor, mas honesto — não minimize um resultado preocupante nem crie
+alarme desnecessário.
+- Sempre termine reforçando que é essencial conversar com o médico responsável
+para confirmar o resultado e decidir os próximos passos.
+- Seja direto: no máximo 1 parágrafo curto (4-6 frases).
+```
+
+**System prompt — resumo executivo de métricas (para gestores hospitalares):**
+
+```
+Você é um assistente que traduz métricas técnicas de Machine Learning em
+insights acionáveis para profissionais de saúde e gestores hospitalares
+sem formação técnica em ML.
+
+Regras importantes:
+- Explique o que os números SIGNIFICAM na prática clínica, não apenas o
+que eles são matematicamente.
+- Priorize sempre a métrica Recall (sensibilidade) na explicação: no
+contexto de câncer, um recall baixo significa mais casos malignos não
+detectados (falso negativo) — o erro clinicamente mais grave.
+- Estruture a resposta em: (1) resumo em 1-2 frases, (2) 2-4 recomendações
+práticas em bullets.
+- Não use jargão técnico de ML sem explicar (ex: não diga apenas "F1-score",
+diga o que ele representa).
+```
+
+**Template do prompt do usuário** (`build_diagnosis_prompt`, versão técnica — a leiga e a de métricas seguem a mesma lógica, só mudando o texto final e omitindo/traduzindo os termos técnicos; todos os três templates completos estão em [prompts.py](src/llm_interpretation/prompts.py)):
+
+```
+Paciente: {patient_summary}
+Modelo utilizado: {model_name}
+Predição do modelo: {prediction_label}
+Confiança do modelo nessa predição: {probability:.1%}
+
+Medidas do exame mais fora do padrão típico desse paciente (em desvios-padrão
+em relação à média do dataset de referência):
+{features_text}
+
+Escreva uma explicação curta, em linguagem natural, para um médico entender
+por que o modelo chegou nessa predição, com base nessas medidas.
+```
+
 ### Duas versões da explicação de diagnóstico
 
 Cada paciente da amostra recebe **2 explicações geradas separadamente**, com prompts e públicos diferentes:
@@ -389,10 +471,6 @@ As duas categorias de **real Maligno** vêm primeiro — é aí que está a impo
 
 Em vez de gastar chamadas de API extra pedindo pro próprio Claude se autoavaliar, usamos uma checklist determinística (`evaluate_quality.py`) com 4 critérios: menciona o diagnóstico, reforça que a decisão final é do médico, não usa linguagem de certeza absoluta, e tem tamanho adequado. O score é a % de critérios atendidos por texto.
 
-### Custo estimado por execução
-
-O pipeline faz **até 17 chamadas** à API por execução (até 8 pacientes × 2 versões de explicação + 1 narrativa de métricas — pode ser menos se alguma categoria tiver poucos exemplos no teste), usando Claude Haiku 4.5. Custo aproximado: **menos de US$ 0,03 por execução completa** — dá pra rodar centenas de vezes com poucos dólares de crédito.
-
 ### Como executar
 
 ```powershell
@@ -407,6 +485,12 @@ reports/llm_interpretation/
 ├── metrics_insights.md         # resumo executivo das métricas da Etapa 1
 └── quality_evaluation.json     # avaliação de qualidade de cada texto gerado
 ```
+
+### Desafios e soluções da Etapa 3
+
+- **Excesso de confiança na explicação leiga**: testando com o paciente 859983 — um falso negativo real (Maligno classificado como Benigno pelo modelo) — a versão leiga inicial abriu a explicação com "a boa notícia é que... não é câncer", tratando a predição **errada** do modelo como um fato confirmado. Solução: reforçamos o `SYSTEM_PROMPT_DIAGNOSIS_LEIGA` proibindo explicitamente linguagem de fato consumado ("não é câncer") e aberturas comemorativas ("boa notícia"), e expandimos `OVERCONFIDENT_KEYWORDS` em `evaluate_quality.py` para pegar esse padrão automaticamente caso volte a acontecer.
+- **LLM confundindo "maior evolução" com "melhor resultado" na narrativa de métricas**: o resumo executivo gerado recomendou o Gradient Boosting como "ferramenta principal" citando seu maior ganho percentual de Recall — mas SVM e MLP tinham desempenho final superior em todas as métricas (Recall igual, F1 e Accuracy maiores). Causa raiz: `build_metrics_prompt()` pedia pra "recomendar quais modelos vale a pena adotar" sem nunca dizer com que critério julgar isso — o Claude preencheu essa lacuna sozinho, e escolheu mal. Solução: adicionamos ao prompt o mesmo critério de julgamento que o resto do projeto já usa (desempenho **final** — Recall, depois F1, depois Accuracy — em vez do tamanho do ganho percentual), corrigindo a causa em vez de só documentar o sintoma.
+- **Dependência de um serviço externo pago**: diferente dos módulos anteriores, esta etapa só funciona com crédito ativo na conta da Anthropic — em um teste real, o crédito se esgotou no meio da execução (`Your credit balance is too low`). Solução: `client.py` já traduz esse erro em uma mensagem clara em vez de deixar o pipeline quebrar de forma confusa.
 
 ### Base para o Módulo 3
 

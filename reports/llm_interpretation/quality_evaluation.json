@@ -81,51 +81,7 @@
       "checks": {
         "menciona_o_diagnostico": true,
         "reforca_decisao_medica": true,
-        "nao_e_excesso_de_certeza": true,
-        "tamanho_adequado": true
-      },
-      "score": 1.0,
-      "passed": 4,
-      "total": 4
-    },
-    {
-      "checks": {
-        "menciona_o_diagnostico": true,
-        "reforca_decisao_medica": true,
-        "nao_e_excesso_de_certeza": true,
-        "tamanho_adequado": true
-      },
-      "score": 1.0,
-      "passed": 4,
-      "total": 4
-    },
-    {
-      "checks": {
-        "menciona_o_diagnostico": false,
-        "reforca_decisao_medica": true,
-        "nao_e_excesso_de_certeza": true,
-        "tamanho_adequado": true
-      },
-      "score": 0.75,
-      "passed": 3,
-      "total": 4
-    },
-    {
-      "checks": {
-        "menciona_o_diagnostico": false,
-        "reforca_decisao_medica": true,
-        "nao_e_excesso_de_certeza": true,
-        "tamanho_adequado": true
-      },
-      "score": 0.75,
-      "passed": 3,
-      "total": 4
-    },
-    {
-      "checks": {
-        "menciona_o_diagnostico": false,
-        "reforca_decisao_medica": true,
-        "nao_e_excesso_de_certeza": true,
+        "nao_e_excesso_de_certeza": false,
         "tamanho_adequado": true
       },
       "score": 0.75,
@@ -156,6 +112,28 @@
     },
     {
       "checks": {
+        "menciona_o_diagnostico": false,
+        "reforca_decisao_medica": true,
+        "nao_e_excesso_de_certeza": false,
+        "tamanho_adequado": true
+      },
+      "score": 0.5,
+      "passed": 2,
+      "total": 4
+    },
+    {
+      "checks": {
+        "menciona_o_diagnostico": false,
+        "reforca_decisao_medica": true,
+        "nao_e_excesso_de_certeza": true,
+        "tamanho_adequado": true
+      },
+      "score": 0.75,
+      "passed": 3,
+      "total": 4
+    },
+    {
+      "checks": {
         "menciona_o_diagnostico": true,
         "reforca_decisao_medica": true,
         "nao_e_excesso_de_certeza": true,
@@ -163,8 +141,30 @@
       },
       "score": 1.0,
       "passed": 4,
+      "total": 4
+    },
+    {
+      "checks": {
+        "menciona_o_diagnostico": true,
+        "reforca_decisao_medica": true,
+        "nao_e_excesso_de_certeza": true,
+        "tamanho_adequado": true
+      },
+      "score": 1.0,
+      "passed": 4,
+      "total": 4
+    },
+    {
+      "checks": {
+        "menciona_o_diagnostico": true,
+        "reforca_decisao_medica": true,
+        "nao_e_excesso_de_certeza": true,
+        "tamanho_adequado": false
+      },
+      "score": 0.75,
+      "passed": 3,
       "total": 4
     }
   ],
-  "average_score": 0.95
+  "average_score": 0.9166666666666666
 }

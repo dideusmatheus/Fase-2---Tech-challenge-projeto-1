@@ -177,5 +177,11 @@ originais e os modelos otimizados por Algoritmo Genético:
 Escreva um resumo executivo explicando o que essa comparação significa na \
 prática para o hospital, e recomende quais modelos otimizados vale a pena \
 adotar.
+
+Ao recomendar, baseie-se no DESEMPENHO FINAL de cada modelo após a \
+otimização (Recall, depois F1, depois Accuracy) — NÃO no tamanho do ganho \
+percentual obtido. Um modelo que melhorou muito mas ainda tem desempenho \
+final inferior a outro não deve ser recomendado como principal só por ter \
+evoluído mais.
 """
     return prompt
