@@ -195,6 +195,8 @@ Rodamos o mesmo modelo (`decision_tree`) com 3 configurações diferentes de pop
 
 ### Resultado: modelos otimizados x originais
 
+A coluna **Ganho de Recall** mostra `Recall_otimizado − Recall_original` (em pontos percentuais), calculado em `optimize_models.py` depois que o Algoritmo Genético já terminou de rodar — não faz parte da função fitness (que só é usada *durante* a busca, pra comparar indivíduos entre si). Serve como leitura rápida de quanto cada modelo evoluiu na métrica mais importante do projeto.
+
 | Modelo | Recall original | Recall otimizado | F1 original | F1 otimizado | Accuracy original | Accuracy otimizada | Ganho de Recall |
 |---|---|---|---|---|---|---|---|
 | Decision Tree | 0.8824 | **0.9412** | 0.8824 | **0.9275** | 0.9121 | **0.9451** | +5.88 pp |
@@ -214,13 +216,12 @@ Dados completos em [reports/ga_optimization/comparison_baseline_vs_ga.csv](repor
 
 ### Decisões e desafios da Etapa 1
 
-- **Dataset pequeno demais para diferenciar todo modelo**: o conjunto de validação tem só 91 amostras. Modelos como Random Forest, SVM e Logistic Regression já operam perto do teto de desempenho possível nesse dataset, então o Algoritmo Genético não encontra ganho de Recall para eles — o que é um resultado válido, não uma falha do algoritmo.
-- **Depreciação do `penalty` na Logistic Regression**: a versão do scikit-learn usada no projeto (1.8) emitia `FutureWarning` ao variar `penalty` junto com `solver="liblinear"`. Solução: remover `penalty` do espaço de busca e manter apenas `C`, evitando o warning sem perder um hiperparâmetro relevante.
+- **Dataset pequeno demais para diferenciar todo modelo**: o conjunto de validação (`X_val`) tem só 91 amostras. Modelos como Random Forest, SVM e Logistic Regression já operam perto do teto de desempenho possível nesse dataset, então o Algoritmo Genético não encontra ganho de Recall para eles — o que é um resultado válido, não uma falha do algoritmo.
 - **Escolha do modelo de referência nos experimentos**: inicialmente os 3 experimentos rodavam em `random_forest`, mas como esse modelo satura no teto de desempenho já na 1ª geração, os 3 gráficos ficavam idênticos (retos) — sem valor demonstrativo. Trocado para `decision_tree`, que tem espaço real de melhoria e mostra o efeito da configuração do Algoritmo Genético.
 
 ### Escopo
 
-- **Etapa 2** (escalabilidade automática, monitoramento e logging): **não incluída no escopo deste projeto**, por decisão do autor.
+- **Etapa 2** (escalabilidade automática, monitoramento e logging): **não incluída no escopo deste projeto**.
 
 ---
 
